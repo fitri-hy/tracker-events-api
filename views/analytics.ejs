@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Analytics <%= site %></title>
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-neutral-900 text-neutral-100 font-sans">
+    <div class="md:fixed md:top-0 md:left-0 w-full md:z-50 pt-4 px-4 bg-neutral-800 shadow-md shadow-neutral-700/50 mb-6 md:mb-0">
+		<h1 class="text-3xl md:text-3xl font-bold text-center">Analytics <span class="text-indigo-400"><%= site %></span></h1>
+		<div class="flex md:flex-row flex-col justify-between gap-4 items-center mt-4">
+			<div class="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
+				<select id="filterEvent" class="w-full sm:w-60 px-4 py-2 bg-neutral-800 text-white rounded border border-neutral-700 focus:ring-2 focus:ring-indigo-500">
+					<option value="">All events</option>
+						<% uniqueEvents.forEach(eventName => { %>
+						<option value="<%= eventName %>"><%= eventName %></option>
+						<% }) %>
+				</select>
+				<div class="flex gap-2">
+					<button id="exportCsv" class="w-full text-center sm:w-auto px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-medium rounded transition duration-150">
+						CSV
+					</button>   
+					<a href="/api/download?site=<%= site %>" class="text-center w-full sm:w-auto px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-medium rounded transition duration-150">
+						JSON
+					</a>      
+					<a href="/api/clear?site=<%= site %>" class="w-full text-center sm:w-auto px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-medium rounded transition duration-150">
+						Clear
+					</a> 
+				</div>
+			</div>
+		</div>  
+		<div class="flex gap-6 mt-2 mb-1 justify-center overflow-x-auto">
+			<% Object.keys(eventCounts).forEach(event => { %>
+				<div class="flex items-center gap-2">
+					<span class="text-neutral-200"><%= event.charAt(0).toUpperCase() + event.slice(1) %></span>
+					<span class="font-bold text-indigo-400"><%= eventCounts[event] %></span>    
+				</div>
+			<% }) %>	
+		</div>		
+	</div>
+    <div class="md:pt-44 px-4 pb-4 md:h-screen">   
+		<div class="overflow-x-auto rounded shadow-inner">
+			<table class="min-w-full table-auto border-collapse">
+				<thead class="bg-neutral-800">
+					<tr>
+						<% const headers = ["Timestamp", "Site", "Event", "Page", "Referrer", "Device", "Screen (WxH)", "IP", "Tag", "Text", "Href"]; %>
+						<% headers.forEach(h => { %>
+						<th class="border border-neutral-800 px-4 py-3 text-left font-semibold text-sm text-neutral-200 whitespace-nowrap">
+							<%= h %>
+						</th>
+						<% }) %>
+					</tr>
+				</thead>
+				<tbody id="logTableBody" class="text-sm text-neutral-300"></tbody>
+			</table> 
+		</div>  
+		<div class="flex flex-row justify-center items-center gap-2 px-4 pt-4 pb-6">
+			<button id="prevPage" class="px-2 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded disabled:opacity-60 disabled:cursor-not-allowed">
+				<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="size-6">
+					<path stroke-linecap="round" stroke-linejoin="round" d="M15.75 19.5 8.25 12l7.5-7.5" />
+				</svg>
+			</button>
+			<span id="pageInfo" class="font-medium text-sm"></span>
+			<button id="nextPage" class="px-2 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded disabled:opacity-60 disabled:cursor-not-allowed">
+				<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="size-6">
+					<path stroke-linecap="round" stroke-linejoin="round" d="m8.25 4.5 7.5 7.5-7.5 7.5" />
+				</svg>
+			</button>
+		</div>
+    </div>
+
+<script>
+  const logs = <%- JSON.stringify(logs) %>;
+  const filterSelect = document.getElementById('filterEvent');
+  const tableBody = document.getElementById('logTableBody');
+  const exportBtn = document.getElementById('exportCsv');
+  const prevBtn = document.getElementById('prevPage');
+  const nextBtn = document.getElementById('nextPage');
+  const pageInfo = document.getElementById('pageInfo');
+
+  let filteredLogs = logs;
+  let currentPage = 1;
+  const rowsPerPage = 50;
+
+  function renderTable(page = 1) {
+    currentPage = page;
+    const start = (page - 1) * rowsPerPage;
+    const end = start + rowsPerPage;
+    const pageLogs = filteredLogs.slice(start, end);
+
+    tableBody.innerHTML = pageLogs.map(log => `
+      <tr class="hover:bg-neutral-800 cursor-pointer transition-colors duration-100">
+        <td class="border border-neutral-800 px-4 py-2 whitespace-nowrap">${new Date(log.timestamp).toLocaleString()}</td>
+        <td class="border border-neutral-800 px-4 py-2 whitespace-nowrap">${log.site}</td>
+        <td class="border border-neutral-800 px-4 py-2 whitespace-nowrap font-medium text-indigo-300">${log.event.charAt(0).toUpperCase() + log.event.slice(1)}</td>
+        <td class="border border-neutral-800 px-4 py-2 whitespace-nowrap">${log.page || '-'}</td>
+        <td class="border border-neutral-800 px-4 py-2 max-w-xs truncate" title="${log.referrer || '-'}">${log.referrer || '-'}</td>
+        <td class="border border-neutral-800 px-4 py-2 whitespace-nowrap">${log.device.charAt(0).toUpperCase() + log.device.slice(1)}</td>
+        <td class="border border-neutral-800 px-4 py-2 whitespace-nowrap">${log.screen ? log.screen.width + 'x' + log.screen.height : '-'}</td>
+        <td class="border border-neutral-800 px-4 py-2 whitespace-nowrap">${log.ip || '-'}</td>
+        <td class="border border-neutral-800 px-4 py-2 whitespace-nowrap">${log.tag || '-'}</td>
+        <td class="border border-neutral-800 px-4 py-2 max-w-xs truncate" title="${log.text || '-'}">${log.text || '-'}</td>
+        <td class="border border-neutral-800 px-4 py-2 max-w-xs truncate" title="${log.href || '-'}">${log.href || '-'}</td>
+      </tr>
+    `).join('');
+
+    const totalPages = Math.ceil(filteredLogs.length / rowsPerPage);
+    pageInfo.textContent = totalPages ? `${currentPage} of ${totalPages}` : '- of -';
+
+    prevBtn.disabled = currentPage === 1 || totalPages === 0;
+    nextBtn.disabled = currentPage === totalPages || totalPages === 0;
+  }
+
+  filterSelect.addEventListener('change', () => {
+    const selected = filterSelect.value;
+    filteredLogs = selected ? logs.filter(log => log.event === selected) : logs;
+    renderTable(1);
+  });
+
+  prevBtn.addEventListener('click', () => {
+    if (currentPage > 1) renderTable(currentPage - 1);
+  });
+
+  nextBtn.addEventListener('click', () => {
+    const totalPages = Math.ceil(filteredLogs.length / rowsPerPage);
+    if (currentPage < totalPages) renderTable(currentPage + 1);
+  });
+
+  function downloadCSV() {
+    const csvRows = [];
+    const headers = ["Timestamp","Event","Site","Page","Referrer","Device","Screen (WxH)","IP","Tag","Text","Href"];
+    csvRows.push(headers.join(","));
+
+    filteredLogs.forEach(log => {
+      const row = [
+        `"${new Date(log.timestamp).toLocaleString()}"`,
+        `"${log.event}"`,
+        `"${log.site}"`,
+        `"${log.page || '-'}"`,
+        `"${(log.referrer || '-').replace(/"/g, '""')}"`,
+        `"${log.device || '-'}"`,
+        `"${log.screen ? log.screen.width + 'x' + log.screen.height : '-'}"`,
+        `"${log.ip || '-'}"`,
+        `"${log.tag || '-'}"`,
+        `"${(log.text || '-').replace(/"/g, '""')}"`,
+        `"${(log.href || '-').replace(/"/g, '""')}"`
+      ];
+      csvRows.push(row.join(","));
+    });
+
+    const csvString = csvRows.join("\n");
+    const blob = new Blob([csvString], { type: "text/csv" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `analytics_${new Date().toISOString().slice(0, 10)}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  exportBtn.addEventListener("click", downloadCSV);
+  renderTable(1);
+</script>
+</body>
+</html>
